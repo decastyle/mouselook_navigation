@@ -135,7 +135,7 @@
             "keys_x_only": "X:PRESS",
             "keys_y_only": "Y:PRESS",
             "keys_zoom": "alt:OFF",
-            "origin_mode": "PREFS",
+            "origin_mode": "LAST_MOUSE",
             "ortho_unrotate": true,
             "zbrush_mode": "ALWAYS"
         }

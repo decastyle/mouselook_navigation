@@ -148,6 +148,23 @@ GENERIC KEYMAP REGISTRATION:
 
 """
 
+import itertools
+
+def _build_axis_rotations():
+    """All 24 proper rotations that map the coordinate axes onto themselves."""
+    result = []
+    for perm in itertools.permutations(range(3)):
+        for signs in itertools.product((1, -1), repeat=3):
+            m = Matrix.Identity(3)
+            m.zero()
+            for col in range(3):
+                m[perm[col]][col] = signs[col]   # image of axis `col`
+            if m.determinant() > 0:              # rotations only, no reflections
+                result.append(m.to_quaternion())
+    return result
+
+AXIS_ROTATIONS = _build_axis_rotations()  # 24 entries
+
 @addon.PropertyGroup
 class MouselookNavigation_InputSettings:
     modes = ['ORBIT', 'PAN', 'DOLLY', 'ZOOM', 'FLY', 'FPS']
@@ -966,39 +983,19 @@ class MouselookNavigation:
         self.rot = self.sv.rotation
         self.sync_view_orientation(True)
 
-    def nearest_axis_view(self):
-        rot = bpy.context.region_data.view_rotation
-        fwd = rot @ Vector((0, 0, -1))  # look direction in world space
-        up = rot @ Vector((0, 1, 0))    # screen-up in world space
-
-        # nearest of the 6 axis views = dominant component of the look direction
-        if abs(fwd.z) > max(abs(fwd.x), abs(fwd.y)):
-            side = 'TOP' if fwd.z < 0 else 'BOTTOM'
-            # Roll: which world direction (+X, +Y, -X, -Y) is screen-up closest to?
-            h = math.pi * 0.5
-            roll_angle = round(math.atan2(up.y, up.x) / h) * h
-            return side, roll_angle
-
-        if abs(fwd.y) >= abs(fwd.x):
-            return ('FRONT' if fwd.y > 0 else 'BACK'), None
-        return ('LEFT' if fwd.x > 0 else 'RIGHT'), None
+    def nearest_axis_rotation(self):
+        q = bpy.context.region_data.view_rotation
+        # |q.c| = cos(half the angle between rotations); q and -q are the same rotation
+        return max(AXIS_ROTATIONS, key=lambda c: abs(q.dot(c))).copy()
 
     def snap_to_nearest_view(self):
         if self.snap_target is not None:
             return  # already snapped for this Shift press
-        side, roll_angle = self.nearest_axis_view()
-        self.snap_target = side
+        self.snap_target = self.nearest_axis_rotation()
 
-        bpy.ops.view3d.view_axis(type=side, align_active=False)
-
-        if roll_angle is not None:
-            rv3d = bpy.context.region_data
-            base = rv3d.view_rotation.copy()          # standard Top/Bottom orientation
-            base_up = base @ Vector((0, 1, 0))
-            base_angle = math.atan2(base_up.y, base_up.x)
-            # rotate around world Z so screen-up lands on the chosen side
-            rv3d.view_rotation = Quaternion((0, 0, 1), roll_angle - base_angle) @ base
-            bpy.ops.view3d.view_orbit(angle=0.0, type='ORBITUP')  # refresh grid, same trick as sync_view_orientation
+        rv3d = bpy.context.region_data
+        rv3d.view_rotation = self.snap_target
+        bpy.ops.view3d.view_orbit(angle=0.0, type='ORBITUP')  # refresh grid, same trick as before
 
         self.rot = self.sv.rotation
         self.euler = self.sv.turntable_euler
