@@ -966,28 +966,40 @@ class MouselookNavigation:
         self.rot = self.sv.rotation
         self.sync_view_orientation(True)
 
-    def nearest_side_view(self):
+    def nearest_axis_view(self):
         rot = bpy.context.region_data.view_rotation
-        fwd = rot @ Vector((0, 0, -1))  # where the view looks, in world space
-        up = rot @ Vector((0, 1, 0))    # screen-up, in world space
+        fwd = rot @ Vector((0, 0, -1))  # look direction in world space
+        up = rot @ Vector((0, 1, 0))    # screen-up in world space
 
-        if abs(fwd.z) > 0.9:
-            # Looking almost straight down/up: the look direction has no
-            # horizontal part, so use the screen-up direction instead
-            h = Vector((up.x, up.y)) if fwd.z < 0 else Vector((-up.x, -up.y))
-        else:
-            h = Vector((fwd.x, fwd.y))
+        # nearest of the 6 axis views = dominant component of the look direction
+        if abs(fwd.z) > max(abs(fwd.x), abs(fwd.y)):
+            side = 'TOP' if fwd.z < 0 else 'BOTTOM'
+            # Roll: which world direction (+X, +Y, -X, -Y) is screen-up closest to?
+            h = math.pi * 0.5
+            roll_angle = round(math.atan2(up.y, up.x) / h) * h
+            return side, roll_angle
 
-        # Blender: Front looks along +Y, Back -Y, Right -X, Left +X
-        if abs(h.y) >= abs(h.x):
-            return 'FRONT' if h.y > 0 else 'BACK'
-        return 'LEFT' if h.x > 0 else 'RIGHT'
+        if abs(fwd.y) >= abs(fwd.x):
+            return ('FRONT' if fwd.y > 0 else 'BACK'), None
+        return ('LEFT' if fwd.x > 0 else 'RIGHT'), None
 
     def snap_to_nearest_view(self):
         if self.snap_target is not None:
             return  # already snapped for this Shift press
-        self.snap_target = self.nearest_side_view()
-        bpy.ops.view3d.view_axis(type=self.snap_target, align_active=False)
+        side, roll_angle = self.nearest_axis_view()
+        self.snap_target = side
+
+        bpy.ops.view3d.view_axis(type=side, align_active=False)
+
+        if roll_angle is not None:
+            rv3d = bpy.context.region_data
+            base = rv3d.view_rotation.copy()          # standard Top/Bottom orientation
+            base_up = base @ Vector((0, 1, 0))
+            base_angle = math.atan2(base_up.y, base_up.x)
+            # rotate around world Z so screen-up lands on the chosen side
+            rv3d.view_rotation = Quaternion((0, 0, 1), roll_angle - base_angle) @ base
+            bpy.ops.view3d.view_orbit(angle=0.0, type='ORBITUP')  # refresh grid, same trick as sync_view_orientation
+
         self.rot = self.sv.rotation
         self.euler = self.sv.turntable_euler
     
