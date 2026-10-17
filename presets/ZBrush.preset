@@ -59,6 +59,35 @@
                 "oskey": false,
                 "shift": false,
                 "value_type": "LEFTMOUSE:PRESS"
+            },
+            {
+                "alt": false,
+                "any": false,
+                "ctrl": false,
+                "input_settings": {
+                    "allowed_transitions": [
+                        "NONE:ORBIT",
+                        "FLY:FPS",
+                        "ORBIT:FPS",
+                        "ORBIT:FLY"
+                    ]
+                },
+                "insert_after": "view3d.manipulator",
+                "insert_before": "*",
+                "key_modifier": "NONE",
+                "keymaps": [
+                    "Sculpt",
+                    "Sculpt Curves",
+                    "Vertex Paint",
+                    "Particle",
+                    "Image Paint",
+                    "Weight Paint",
+                    "3D View",
+                    "Font"
+                ],
+                "oskey": false,
+                "shift": true,
+                "value_type": "LEFTMOUSE:PRESS"
             }
         ],
         "settings": {

@@ -603,6 +603,8 @@ class MouselookNavigation:
                 is_orbit_snap = self.keys_orbit_snap('ON')
                 delta_orbit_snap = int(is_orbit_snap) - int(self.prev_orbit_snap)
                 self.prev_orbit_snap = is_orbit_snap
+                if delta_orbit_snap > 0:
+                    self.snap_target = None
                 if delta_orbit_snap < 0:
                     self.euler = self.sv.turntable_euler
                     self.rot = self.sv.rotation
@@ -627,7 +629,9 @@ class MouselookNavigation:
                         bpy.ops.view3d.view_orbit(angle=0.0, type='ORBITUP')
                         
                         # snapping trackball rotation is problematic (I don't know how to do it)
-                        if (not self.is_trackball) or is_orbit_snap:
+                        if is_orbit_snap:
+                            pass  # view is latched to one face; drag is intentionally ignored
+                        elif not self.is_trackball:
                             self.change_euler(mouse_delta.y * speed_euler.y, mouse_delta.x * speed_euler.x, 0)
                         else: # 'TRACKBALL'
                             if flips.orbit_x:
@@ -647,7 +651,7 @@ class MouselookNavigation:
                             self.sv.is_perspective = self._perspective0
                         
                         if is_orbit_snap:
-                            self.snap_rotation(self.rotation_snap_subdivs)
+                            self.snap_to_nearest_view()
                         elif self.sv.is_perspective:
                             self.sync_view_orientation(False)
                     elif mode == 'PAN':
@@ -961,6 +965,31 @@ class MouselookNavigation:
         self.sv.turntable_euler = euler
         self.rot = self.sv.rotation
         self.sync_view_orientation(True)
+
+    def nearest_side_view(self):
+        rot = bpy.context.region_data.view_rotation
+        fwd = rot @ Vector((0, 0, -1))  # where the view looks, in world space
+        up = rot @ Vector((0, 1, 0))    # screen-up, in world space
+
+        if abs(fwd.z) > 0.9:
+            # Looking almost straight down/up: the look direction has no
+            # horizontal part, so use the screen-up direction instead
+            h = Vector((up.x, up.y)) if fwd.z < 0 else Vector((-up.x, -up.y))
+        else:
+            h = Vector((fwd.x, fwd.y))
+
+        # Blender: Front looks along +Y, Back -Y, Right -X, Left +X
+        if abs(h.y) >= abs(h.x):
+            return 'FRONT' if h.y > 0 else 'BACK'
+        return 'LEFT' if h.x > 0 else 'RIGHT'
+
+    def snap_to_nearest_view(self):
+        if self.snap_target is not None:
+            return  # already snapped for this Shift press
+        self.snap_target = self.nearest_side_view()
+        bpy.ops.view3d.view_axis(type=self.snap_target, align_active=False)
+        self.rot = self.sv.rotation
+        self.euler = self.sv.turntable_euler
     
     def change_euler(self, ex, ey, ez, always_up=False):
         self.euler.x += ex
@@ -1217,6 +1246,7 @@ class MouselookNavigation:
         self.autolevel_speed_modifier = settings.autolevel_speed_modifier
         
         self.prev_orbit_snap = False
+        self.snap_target = None
         self.min_distance = 2 ** -10
         
         self.fly_speed = Vector()
@@ -1732,7 +1762,7 @@ def update_keymaps(activate=True):
     # "{Invoke key}: Double click" shortcut won't work (or we'd need multiple keymaps)
     
     if len(settings.autoreg_keymaps) == 0 and settings.use_default_keymap:
-        default_preset = AutoregKeymapPreset.presets.get("Blender")
+        default_preset = AutoregKeymapPreset.presets.get("ZBrush")
         if default_preset:
             error = default_preset.apply(context)
             if error: print(error)
@@ -2414,7 +2444,7 @@ class ThisAddonPreferences:
     fps_speed_modifier: 1.0 | prop("FPS speed", "FPS movement speed")
     fps_horizontal: False | prop("FPS horizontal", "Force forward/backward to be in horizontal plane, and up/down to be vertical")
     zoom_to_selection: True | prop("Zoom to selection", "Zoom to selection when Orbit Around Selection is enabled")
-    trackball_mode: 'WRAPPED' | prop("Trackball mode", "Rotation algorithm used in trackball mode", items=[
+    trackball_mode: 'CENTER' | prop("Trackball mode", "Rotation algorithm used in trackball mode", items=[
         ('BLENDER', 'Blender', 'Blender (buggy!)', 'ERROR'),
         ('WRAPPED', 'Wrapped'),
         ('CENTER', 'Center'),
