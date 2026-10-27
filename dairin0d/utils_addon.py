@@ -100,13 +100,22 @@ class AddonManager:
         return self
     
     def __init_config_storages(self):
+        # Storage property names become RNA identifiers on WindowManager/Screen,
+        # which Blender caps at 63 chars. Key them on the addon's leaf name (bounded,
+        # dot-free, independent of install location). module_name stays the lookup
+        # identity for bl_idname and the preferences lookup.
+        storage_stem = self.module_name.rpartition(".")[2]
+        
         name_prefs = f"{self.module_name}-preferences"
-        name_external = f"{self.module_name}-external-storage"
-        name_internal = f"{self.module_name}-internal-storage"
+        name_external = f"{storage_stem}-external-storage"
+        name_internal = f"{storage_stem}-internal-storage"
         name_runtime = f"{self.module_name}-runtime-settings"
         
         self.storage_name_external = f"<{name_external}>"
         self.storage_name_internal = f"<{name_internal}>"
+        
+        for storage_name in (self.storage_name_external, self.storage_name_internal):
+            assert len(storage_name) <= 63, f"RNA storage name too long ({len(storage_name)} > 63): {storage_name}"
         
         @classmethod
         def Include(cls, decor_cls):
@@ -1699,7 +1708,7 @@ class PresetManager:
         def visit_Name(self, node):
             try:
                 value = self._names_to_consts[node.id]
-                return ast.copy_location(ast.NameConstant(value=value), node)
+                return ast.copy_location(ast.Constant(value=value), node)
             except KeyError:
                 return node
     
